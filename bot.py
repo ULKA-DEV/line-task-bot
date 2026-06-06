@@ -420,6 +420,20 @@ def morning_alert():
     return jsonify({'sent': len(groups)})
 
 
+@app.route("/reset-db", methods=['GET'])
+def reset_db():
+    token = request.args.get('token', '')
+    if token != MORNING_ALERT_TOKEN:
+        abort(403)
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('TRUNCATE tasks RESTART IDENTITY CASCADE')
+    c.execute('TRUNCATE groups CASCADE')
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'ok', 'message': 'Database cleared!'})
+
+
 @app.route("/", methods=['GET'])
 def index():
     return "LINE Task Bot is running! 🤖"
