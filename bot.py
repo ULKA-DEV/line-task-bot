@@ -233,8 +233,11 @@ def handle_command(text, group_id, sender_name):
             a_str = f' (@{assignee})' if assignee else ''
             results.append(f"  ✅ [{task_id}] {item}{a_str}")
         if len(results) == 1:
-            return f"โอเคค่า! เพิ่มงาน {results[0].strip()} ให้แล้วนะคะ 📝"
-        return f"เรียบร้อยค่า! มาเบลเพิ่ม {len(results)} งานให้แล้วนะคะ 📝\n" + '\n'.join(results)
+            tid = results[0].strip().split(']')[0].replace('✅ [', '')
+            name = results[0].strip().split('] ', 1)[1] if '] ' in results[0] else ''
+            return f"โอเคค่า! เพิ่มงาน [{tid}] {name} ให้แล้วนะคะ 📝"
+        id_list = ', '.join([r.strip().split(']')[0].replace('✅ [', '') for r in results])
+        return f"เรียบร้อยค่า! เพิ่ม {len(results)} งานแล้วนะคะ 📝\n(เลขงาน: {id_list})\nพิมพ์ งานทั้งหมด เพื่อดูรายการค่า~"
 
     elif text.startswith('ลบงาน '):
         try:
