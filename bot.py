@@ -194,11 +194,16 @@ def handle_command(text, group_id, sender_name):
     if (text.startswith('เพิ่มงาน\n') or text == 'เพิ่มงาน') and '\n' in text:
         lines = text.split('\n')[1:]
         results = []
+        STOP_WORDS = ['หมดแล้ว', 'เสร็จแล้ว', 'หมด', 'จบ', 'end']
         for line in lines:
             line = line.strip()
             if not line:
                 continue
-            item = re.sub(r'^[\d\-\*\.]+\s*', '', line).strip()
+            # หยุดเมื่อเจอคำสิ้นสุด
+            if line.lower() in STOP_WORDS:
+                break
+            # ตัดเลขนำหน้าออก เช่น "1." "1)" "1 "
+            item = re.sub(r'^[\d]+[\.\)]\s*', '', line).strip()
             if not item:
                 continue
             assignee = None
@@ -208,10 +213,11 @@ def handle_command(text, group_id, sender_name):
                 assignee = parts[1].strip()
             task_id = add_task(group_id, item, assignee)
             a_str = f' (@{assignee})' if assignee else ''
-            results.append(f"  ✅ [{task_id}] {item}{a_str}")
+            results.append(f"[{task_id}] {item}{a_str}")
         if not results:
             return "กรุณาระบุชื่องานด้วยนะคะ 🙏"
-        return f"เรียบร้อยค่า! มาเบลเพิ่ม {len(results)} งานให้แล้วนะคะ 📝\n" + '\n'.join(results)
+        ids = ', '.join([r.split(']')[0].replace('[', '') for r in results])
+        return f"เรียบร้อยค่า! เพิ่ม {len(results)} งานแล้วนะคะ 📝\nเลขงาน: {ids}\nพิมพ์ งานทั้งหมด เพื่อดูรายการค่า~"
 
     # เพิ่มงานแบบปกติ (คั่นด้วย |)
     if text.startswith('เพิ่มงาน ') or text.startswith('+ '):
