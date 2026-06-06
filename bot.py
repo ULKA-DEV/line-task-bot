@@ -1,8 +1,8 @@
 import os
+import re
 import psycopg2
-import psycopg2.extras
 from datetime import date
-from flask import Flask, request, abort
+from flask import Flask, request, abort, jsonify
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
@@ -12,6 +12,7 @@ app = Flask(__name__)
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN', '')
 LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET', '')
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
+MORNING_ALERT_TOKEN = os.environ.get('MORNING_ALERT_TOKEN', 'mytoken123')
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
@@ -36,8 +37,32 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    # เก็บ group_id สำหรับแจ้งเตือน
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS groups (
+            group_id TEXT PRIMARY KEY,
+            registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     conn.commit()
     conn.close()
+
+
+def register_group(group_id):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('INSERT INTO groups (group_id) VALUES (%s) ON CONFLICT DO NOTHING', (group_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_all_groups():
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute('SELECT group_id FROM groups')
+    rows = [r[0] for r in c.fetchall()]
+    conn.close()
+    return rows
 
 
 def get_tasks(group_id, status=None):
@@ -93,12 +118,8 @@ def get_task_by_id(task_id, group_id):
     return row
 
 
-# ─── Message formatters ─────────────────────────────────────
-STATUS_EMOJI = {
-    'todo': '⬜',
-    'doing': '🔄',
-    'done': '✅'
-}
+# ─── Formatters ─────────────────────────────────────────────
+STATUS_EMOJI = {'todo': '⬜', 'doing': '🔄', 'done': '✅'}
 
 
 def format_task_list(tasks):
@@ -106,51 +127,49 @@ def format_task_list(tasks):
         return "ไม่มีงานในขณะนี้ 🎉"
     lines = []
     for t in tasks:
-        tid, gid, title, assignee, status = t[0], t[1], t[2], t[3], t[4]
-        emoji = STATUS_EMOJI.get(status, '⬜')
-        assignee_str = f' ({assignee})' if assignee else ''
-        lines.append(f"{emoji} [{tid}] {title}{assignee_str}")
+        emoji = STATUS_EMOJI.get(t[4], '⬜')
+        a = f' ({t[3]})' if t[3] else ''
+        lines.append(f"{emoji} [{t[0]}] {t[2]}{a}")
     return '\n'.join(lines)
 
 
-def format_summary(group_id):
+def format_morning_alert(group_id):
     all_tasks = get_tasks(group_id)
     todo = [t for t in all_tasks if t[4] == 'todo']
     doing = [t for t in all_tasks if t[4] == 'doing']
-    done = [t for t in all_tasks if t[4] == 'done']
 
     today = date.today().strftime('%d/%m/%Y')
     lines = [
-        f"📋 สรุปงานประจำวัน — {today}",
+        f"🌸 อรุณสวัสดิ์ค่า! มาเบลมาแล้วนะคะ ✨",
+        f"📋 สรุปงานวันนี้ {today}",
         f"{'─'*30}",
-        f"⬜ รอดำเนินการ: {len(todo)} งาน",
-        f"🔄 กำลังทำ: {len(doing)} งาน",
-        f"✅ เสร็จแล้ว: {len(done)} งาน",
+        f"⬜ รอดำเนินการ: {len(todo)} งานค่า",
+        f"🔄 กำลังทำ: {len(doing)} งานค่า",
         f"{'─'*30}",
     ]
     if doing:
-        lines.append("🔄 กำลังทำอยู่:")
+        lines.append("🔄 งานที่กำลังทำอยู่นะคะ:")
         for t in doing:
             a = f' ({t[3]})' if t[3] else ''
             lines.append(f"  [{t[0]}] {t[2]}{a}")
     if todo:
-        lines.append("⬜ ยังไม่ได้ทำ:")
+        lines.append("⬜ งานที่ยังรออยู่เลยค่า:")
         for t in todo:
             a = f' ({t[3]})' if t[3] else ''
             lines.append(f"  [{t[0]}] {t[2]}{a}")
-    if done:
-        lines.append("✅ เสร็จวันนี้:")
-        for t in done:
-            a = f' ({t[3]})' if t[3] else ''
-            lines.append(f"  [{t[0]}] {t[2]}{a}")
+    if not todo and not doing:
+        lines.append("🎉 ว้าว! ไม่มีงานค้างเลยค่า วันนี้สบายใจได้เลยนะคะ~ 💕")
     return '\n'.join(lines)
 
 
-HELP_TEXT = """🤖 คำสั่งบอทเลขา
+HELP_TEXT = """🎀 สวัสดีค่า! หนูมาเบลเลขาสุดน่ารักมาแล้วนะคะ
 ─────────────────────
-📌 จัดการงาน
+📌 เพิ่มงาน
   เพิ่มงาน [ชื่องาน]
   เพิ่มงาน [ชื่องาน] @[ชื่อคน]
+  เพิ่มงาน งาน1 | งาน2 | งาน3
+
+🗑️ ลบงาน
   ลบงาน [เลขงาน]
 
 📊 อัพเดทสถานะ
@@ -172,80 +191,143 @@ HELP_TEXT = """🤖 คำสั่งบอทเลขา
 def handle_command(text, group_id, sender_name):
     text = text.strip()
 
+    # เพิ่มงานแบบลิสต์ตัวเลข (ขึ้นบรรทัดใหม่)
+    if (text.startswith('เพิ่มงาน\n') or text == 'เพิ่มงาน') and '\n' in text:
+        lines = text.split('\n')[1:]  # ตัด "เพิ่มงาน" บรรทัดแรกออก
+        results = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            # ตัดเลขนำหน้าออก เช่น "1 งาน", "1. งาน", "- งาน"
+            item = re.sub(r'^[\d\-\*\.]+\s*', '', line).strip()
+            if not item:
+                continue
+            assignee = None
+            if ' @' in item:
+                parts = item.rsplit(' @', 1)
+                item = parts[0].strip()
+                assignee = parts[1].strip()
+            task_id = add_task(group_id, item, assignee)
+            a_str = f' (@{assignee})' if assignee else ''
+            results.append(f"  ✅ [{task_id}] {item}{a_str}")
+        if not results:
+            return "กรุณาระบุชื่องาน"
+        return f"✅ เพิ่ม {len(results)} งานแล้ว\n" + '\n'.join(results)
+
+    # เพิ่มงานแบบปกติ (คั่นด้วย | หรือลูกน้ำ)
     if text.startswith('เพิ่มงาน ') or text.startswith('+ '):
         raw = text[5:].strip() if text.startswith('เพิ่มงาน') else text[2:].strip()
-        assignee = None
-        if ' @' in raw:
-            parts = raw.rsplit(' @', 1)
-            raw = parts[0].strip()
-            assignee = parts[1].strip()
         if not raw:
-            return "กรุณาระบุชื่องาน เช่น: เพิ่มงาน ส่งรายงาน @สมชาย"
-        task_id = add_task(group_id, raw, assignee)
-        a_str = f' มอบหมายให้ @{assignee}' if assignee else ''
-        return f"✅ เพิ่มงาน [{task_id}] {raw}{a_str} แล้ว"
+            return "กรุณาระบุชื่องาน เช่น: เพิ่มงาน งาน1 | งาน2 | งาน3"
+        # ใช้ | เป็นตัวคั่นหลัก ถ้าไม่มีจึงใช้ลูกน้ำ
+        if '|' in raw:
+            items = [i.strip() for i in raw.split('|') if i.strip()]
+        else:
+            items = [raw]  # ถ้าไม่มี | ให้เป็นงานเดียว
+        results = []
+        for item in items:
+            assignee = None
+            if ' @' in item:
+                parts = item.rsplit(' @', 1)
+                item = parts[0].strip()
+                assignee = parts[1].strip()
+            task_id = add_task(group_id, item, assignee)
+            a_str = f' (@{assignee})' if assignee else ''
+            results.append(f"  ✅ [{task_id}] {item}{a_str}")
+        if len(results) == 1:
+            return f"โอเคค่า! เพิ่มงาน {results[0].strip()} ให้แล้วนะคะ 📝"
+        return f"เรียบร้อยค่า! มาเบลเพิ่ม {len(results)} งานให้แล้วนะคะ 📝\n" + '\n'.join(results)
 
     elif text.startswith('ลบงาน '):
         try:
             tid = int(text[5:].strip())
             task = get_task_by_id(tid, group_id)
             if not task:
-                return f"❌ ไม่พบงาน [{tid}]"
+                return f"หาไม่เจอเลยค่า งาน [{tid}] ไม่มีในระบบนะคะ 🥺"
             delete_task(tid, group_id)
-            return f"🗑️ ลบงาน [{tid}] {task[2]} แล้ว"
+            return f"🗑️ ลบงาน [{tid}] {task[2]} ออกแล้วนะคะ~"
         except ValueError:
-            return "❌ กรุณาระบุเลขงาน เช่น: ลบงาน 3"
+            return "บอกเลขงานด้วยนะคะ เช่น: ลบงาน 3 ค่า 🙏"
 
     elif text.startswith('ทำอยู่ '):
         try:
             tid = int(text[5:].strip())
             ok = update_task_status(tid, group_id, 'doing')
             if not ok:
-                return f"❌ ไม่พบงาน [{tid}]"
+                return f"หาไม่เจอเลยค่า งาน [{tid}] ไม่มีในระบบนะคะ 🥺"
             task = get_task_by_id(tid, group_id)
-            return f"🔄 อัพเดท [{tid}] {task[2]} → กำลังทำ"
+            return f"🔄 โอเคค่า! [{tid}] {task[2]} กำลังทำอยู่นะคะ สู้ๆ นะคะ! 💪"
         except ValueError:
-            return "❌ กรุณาระบุเลขงาน เช่น: ทำอยู่ 3"
+            return "บอกเลขงานด้วยนะคะ เช่น: ทำอยู่ 3 ค่า 🙏"
 
     elif text.startswith('เสร็จ '):
         try:
             tid = int(text[4:].strip())
             ok = update_task_status(tid, group_id, 'done')
             if not ok:
-                return f"❌ ไม่พบงาน [{tid}]"
+                return f"หาไม่เจอเลยค่า งาน [{tid}] ไม่มีในระบบนะคะ 🥺"
             task = get_task_by_id(tid, group_id)
-            return f"✅ เยี่ยม! งาน [{tid}] {task[2]} เสร็จแล้ว 🎉"
+            return f"เก่งมากเลยค่า! 🎉 งาน [{tid}] {task[2]} เสร็จแล้วนะคะ ยอดเยี่ยมมากค่า~ ✨"
         except ValueError:
-            return "❌ กรุณาระบุเลขงาน เช่น: เสร็จ 3"
+            return "บอกเลขงานด้วยนะคะ เช่น: เสร็จ 3 ค่า 🙏"
 
     elif text.startswith('ยกเลิก '):
         try:
             tid = int(text[5:].strip())
             ok = update_task_status(tid, group_id, 'todo')
             if not ok:
-                return f"❌ ไม่พบงาน [{tid}]"
+                return f"หาไม่เจอเลยค่า งาน [{tid}] ไม่มีในระบบนะคะ 🥺"
             task = get_task_by_id(tid, group_id)
-            return f"↩️ รีเซ็ต [{tid}] {task[2]} → รอดำเนินการ"
+            return f"↩️ โอเคค่า รีเซ็ต [{tid}] {task[2]} กลับไปรอดำเนินการแล้วนะคะ"
         except ValueError:
-            return "❌ กรุณาระบุเลขงาน เช่น: ยกเลิก 3"
+            return "บอกเลขงานด้วยนะคะ เช่น: ยกเลิก 3 ค่า 🙏"
 
     elif text in ['งานทั้งหมด', 'ดูงาน', 'งาน']:
         tasks = get_tasks(group_id)
-        header = f"📋 งานทั้งหมด ({len(tasks)} รายการ)\n{'─'*25}\n"
+        header = f"📋 งานทั้งหมดเลยค่า ({len(tasks)} รายการ)\n{'─'*25}\n"
         return header + format_task_list(tasks)
 
     elif text in ['งานค้าง', 'ยังไม่ทำ', 'todo']:
         tasks = get_tasks(group_id, 'todo') + get_tasks(group_id, 'doing')
-        header = f"⏳ งานที่ยังไม่เสร็จ ({len(tasks)} รายการ)\n{'─'*25}\n"
+        header = f"⏳ งานที่ยังค้างอยู่นะคะ ({len(tasks)} รายการ)\n{'─'*25}\n"
         return header + format_task_list(tasks)
 
     elif text in ['งานเสร็จ', 'เสร็จแล้ว', 'done']:
         tasks = get_tasks(group_id, 'done')
-        header = f"✅ งานที่เสร็จแล้ว ({len(tasks)} รายการ)\n{'─'*25}\n"
+        header = f"✅ งานที่เสร็จแล้วค่า ({len(tasks)} รายการ)\n{'─'*25}\n"
         return header + format_task_list(tasks)
 
     elif text in ['สรุปวันนี้', 'สรุป', 'summary']:
-        return format_summary(group_id)
+        all_tasks = get_tasks(group_id)
+        todo = [t for t in all_tasks if t[4] == 'todo']
+        doing = [t for t in all_tasks if t[4] == 'doing']
+        done = [t for t in all_tasks if t[4] == 'done']
+        today = date.today().strftime('%d/%m/%Y')
+        lines = [
+            f"📋 มาเบลสรุปงานให้นะคะ — {today}",
+            f"{'─'*30}",
+            f"⬜ รอดำเนินการ: {len(todo)} งานค่า",
+            f"🔄 กำลังทำ: {len(doing)} งานค่า",
+            f"✅ เสร็จแล้ว: {len(done)} งานค่า",
+            f"{'─'*30}",
+        ]
+        if doing:
+            lines.append("🔄 กำลังทำอยู่นะคะ:")
+            for t in doing:
+                a = f' ({t[3]})' if t[3] else ''
+                lines.append(f"  [{t[0]}] {t[2]}{a}")
+        if todo:
+            lines.append("⬜ ยังรออยู่เลยค่า:")
+            for t in todo:
+                a = f' ({t[3]})' if t[3] else ''
+                lines.append(f"  [{t[0]}] {t[2]}{a}")
+        if done:
+            lines.append("✅ เสร็จแล้วค่า เก่งมากเลย!:")
+            for t in done:
+                a = f' ({t[3]})' if t[3] else ''
+                lines.append(f"  [{t[0]}] {t[2]}{a}")
+        return '\n'.join(lines)
 
     elif text in ['ช่วยเหลือ', 'help', '?', 'คำสั่ง']:
         return HELP_TEXT
@@ -270,8 +352,10 @@ def handle_message(event):
     source = event.source
     if source.type == 'group':
         group_id = source.group_id
+        register_group(group_id)
     elif source.type == 'room':
         group_id = source.room_id
+        register_group(group_id)
     else:
         group_id = source.user_id
 
@@ -292,12 +376,29 @@ def handle_message(event):
         )
 
 
+# ─── Morning Alert Endpoint ─────────────────────────────────
+@app.route("/morning-alert", methods=['POST'])
+def morning_alert():
+    token = request.args.get('token', '')
+    if token != MORNING_ALERT_TOKEN:
+        abort(403)
+    groups = get_all_groups()
+    for group_id in groups:
+        msg = format_morning_alert(group_id)
+        try:
+            line_bot_api.push_message(group_id, TextSendMessage(text=msg))
+        except Exception as e:
+            print(f"Error sending to {group_id}: {e}")
+    return jsonify({'sent': len(groups)})
+
+
 @app.route("/", methods=['GET'])
 def index():
     return "LINE Task Bot is running! 🤖"
 
 
+init_db()
+
 if __name__ == "__main__":
-    init_db()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
