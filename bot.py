@@ -37,7 +37,6 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    # เก็บ group_id สำหรับแจ้งเตือน
     c.execute('''
         CREATE TABLE IF NOT EXISTS groups (
             group_id TEXT PRIMARY KEY,
@@ -193,13 +192,12 @@ def handle_command(text, group_id, sender_name):
 
     # เพิ่มงานแบบลิสต์ตัวเลข (ขึ้นบรรทัดใหม่)
     if (text.startswith('เพิ่มงาน\n') or text == 'เพิ่มงาน') and '\n' in text:
-        lines = text.split('\n')[1:]  # ตัด "เพิ่มงาน" บรรทัดแรกออก
+        lines = text.split('\n')[1:]
         results = []
         for line in lines:
             line = line.strip()
             if not line:
                 continue
-            # ตัดเลขนำหน้าออก เช่น "1 งาน", "1. งาน", "- งาน"
             item = re.sub(r'^[\d\-\*\.]+\s*', '', line).strip()
             if not item:
                 continue
@@ -212,19 +210,18 @@ def handle_command(text, group_id, sender_name):
             a_str = f' (@{assignee})' if assignee else ''
             results.append(f"  ✅ [{task_id}] {item}{a_str}")
         if not results:
-            return "กรุณาระบุชื่องาน"
-        return f"✅ เพิ่ม {len(results)} งานแล้ว\n" + '\n'.join(results)
+            return "กรุณาระบุชื่องานด้วยนะคะ 🙏"
+        return f"เรียบร้อยค่า! มาเบลเพิ่ม {len(results)} งานให้แล้วนะคะ 📝\n" + '\n'.join(results)
 
-    # เพิ่มงานแบบปกติ (คั่นด้วย | หรือลูกน้ำ)
+    # เพิ่มงานแบบปกติ (คั่นด้วย |)
     if text.startswith('เพิ่มงาน ') or text.startswith('+ '):
         raw = text[5:].strip() if text.startswith('เพิ่มงาน') else text[2:].strip()
         if not raw:
-            return "กรุณาระบุชื่องาน เช่น: เพิ่มงาน งาน1 | งาน2 | งาน3"
-        # ใช้ | เป็นตัวคั่นหลัก ถ้าไม่มีจึงใช้ลูกน้ำ
+            return "กรุณาระบุชื่องานด้วยนะคะ เช่น: เพิ่มงาน งาน1 | งาน2 | งาน3 ค่า 🙏"
         if '|' in raw:
             items = [i.strip() for i in raw.split('|') if i.strip()]
         else:
-            items = [raw]  # ถ้าไม่มี | ให้เป็นงานเดียว
+            items = [raw]
         results = []
         for item in items:
             assignee = None
@@ -307,9 +304,9 @@ def handle_command(text, group_id, sender_name):
         lines = [
             f"📋 มาเบลสรุปงานให้นะคะ — {today}",
             f"{'─'*30}",
-            f"⬜ รอดำเนินการ: {len(todo)} งานค่า",
-            f"🔄 กำลังทำ: {len(doing)} งานค่า",
-            f"✅ เสร็จแล้ว: {len(done)} งานค่า",
+            f"⬜ รอดำเนินการ: {len(todo)} งานค่ะ",
+            f"🔄 กำลังทำ: {len(doing)} งานค่ะ",
+            f"✅ เสร็จแล้ว: {len(done)} งานค่ะ",
             f"{'─'*30}",
         ]
         if doing:
@@ -331,6 +328,18 @@ def handle_command(text, group_id, sender_name):
 
     elif text in ['ช่วยเหลือ', 'help', '?', 'คำสั่ง']:
         return HELP_TEXT
+
+    elif text in ['มาเบล', 'Mabel', 'mabel', 'เบล']:
+        return f"""สวัสดีค่า {sender_name}! 🌸 มาเบลอยู่ตรงนี้นะคะ
+
+มีอะไรให้มาเบลช่วยไหมคะ? พิมพ์สิ่งที่ต้องการได้เลยนะคะ เช่น
+
+📌 เพิ่มงาน [ชื่องาน]
+📊 ทำอยู่ / เสร็จ / ยกเลิก [เลขงาน]
+📋 งานทั้งหมด / งานค้าง / สรุปวันนี้
+🗑️ ลบงาน [เลขงาน]
+
+หรือพิมพ์ว่า ช่วยเหลือ เพื่อดูคำสั่งทั้งหมดนะคะ 💕"""
 
     return None
 
