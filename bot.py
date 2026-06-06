@@ -333,7 +333,8 @@ def handle_command(text, group_id, sender_name):
         conn = get_conn()
         c = conn.cursor()
         c.execute('DELETE FROM tasks WHERE group_id=%s', (group_id,))
-        c.execute("SELECT setval(pg_get_serial_sequence('tasks', 'id'), COALESCE((SELECT MAX(id) FROM tasks), 0))")
+        # reset sequence กลับเป็น 1 จริงๆ
+        c.execute("ALTER SEQUENCE tasks_id_seq RESTART WITH 1")
         conn.commit()
         conn.close()
         return "🗑️ ล้างงานทั้งหมดแล้วนะคะ เลขงานจะเริ่มใหม่จาก 1 เลยค่า~ ✨"
