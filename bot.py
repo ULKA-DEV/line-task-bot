@@ -143,22 +143,22 @@ def format_morning_alert(group_id):
         f"🌸 อรุณสวัสดิ์ค่า! มาเบลมาแล้วนะคะ ✨",
         f"📋 สรุปงานวันนี้ {today}",
         f"{'─'*30}",
-        f"⬜ รอดำเนินการ: {len(todo)} งานค่า",
-        f"🔄 กำลังทำ: {len(doing)} งานค่า",
+        f"⬜ รอดำเนินการ: {len(todo)} งานค่ะ",
+        f"🔄 กำลังทำ: {len(doing)} งานค่ะ",
         f"{'─'*30}",
     ]
     if doing:
-        lines.append("🔄 งานที่กำลังทำอยู่นะคะ:")
+        lines.append("🔄 งานที่พี่กำลังทำอยู่นะคะ:")
         for t in doing:
             a = f' ({t[3]})' if t[3] else ''
             lines.append(f"  [{t[0]}] {t[2]}{a}")
     if todo:
-        lines.append("⬜ งานที่ยังรออยู่เลยค่า:")
+        lines.append("⬜ งานที่ยังรออยู่ค่า:")
         for t in todo:
             a = f' ({t[3]})' if t[3] else ''
             lines.append(f"  [{t[0]}] {t[2]}{a}")
     if not todo and not doing:
-        lines.append("🎉 ว้าว! ไม่มีงานค้างเลยค่า วันนี้สบายใจได้เลยนะคะ~ 💕")
+        lines.append("🎉 ว้าว! ไม่มีงานค้างเลย วันนี้สบายใจได้เลยนะคะ~ 💕")
     return '\n'.join(lines)
 
 
