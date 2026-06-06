@@ -247,7 +247,7 @@ def handle_command(text, group_id, sender_name):
 
     elif text.startswith('ลบงาน '):
         try:
-            tid = int(text[5:].strip())
+            tid = int(text.replace('ลบงาน ', '', 1).strip())
             task = get_task_by_id(tid, group_id)
             if not task:
                 return f"หาไม่เจอเลยค่า งาน [{tid}] ไม่มีในระบบนะคะ 🥺"
@@ -258,7 +258,7 @@ def handle_command(text, group_id, sender_name):
 
     elif text.startswith('ทำอยู่ '):
         try:
-            tid = int(text[5:].strip())
+            tid = int(text.replace('ทำอยู่ ', '', 1).strip())
             ok = update_task_status(tid, group_id, 'doing')
             if not ok:
                 return f"หาไม่เจอเลยค่า งาน [{tid}] ไม่มีในระบบนะคะ 🥺"
@@ -269,7 +269,7 @@ def handle_command(text, group_id, sender_name):
 
     elif text.startswith('เสร็จ '):
         try:
-            tid = int(text[4:].strip())
+            tid = int(text.replace('เสร็จ ', '', 1).strip())
             ok = update_task_status(tid, group_id, 'done')
             if not ok:
                 return f"หาไม่เจอเลยค่า งาน [{tid}] ไม่มีในระบบนะคะ 🥺"
@@ -280,7 +280,7 @@ def handle_command(text, group_id, sender_name):
 
     elif text.startswith('ยกเลิก '):
         try:
-            tid = int(text[5:].strip())
+            tid = int(text.replace('ยกเลิก ', '', 1).strip())
             ok = update_task_status(tid, group_id, 'todo')
             if not ok:
                 return f"หาไม่เจอเลยค่า งาน [{tid}] ไม่มีในระบบนะคะ 🥺"
@@ -427,8 +427,7 @@ def reset_db():
         abort(403)
     conn = get_conn()
     c = conn.cursor()
-    c.execute('TRUNCATE tasks RESTART IDENTITY CASCADE')
-    c.execute('TRUNCATE groups CASCADE')
+    c.execute('TRUNCATE tasks RESTART IDENTITY')
     conn.commit()
     conn.close()
     return jsonify({'status': 'ok', 'message': 'Database cleared!'})
