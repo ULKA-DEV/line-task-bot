@@ -329,6 +329,15 @@ def handle_command(text, group_id, sender_name):
     elif text in ['ช่วยเหลือ', 'help', '?', 'คำสั่ง']:
         return HELP_TEXT
 
+    elif text in ['ล้างงาน', 'ล้างทั้งหมด', 'reset']:
+        conn = get_conn()
+        c = conn.cursor()
+        c.execute('DELETE FROM tasks WHERE group_id=%s', (group_id,))
+        c.execute("SELECT setval(pg_get_serial_sequence('tasks', 'id'), COALESCE((SELECT MAX(id) FROM tasks), 0))")
+        conn.commit()
+        conn.close()
+        return "🗑️ ล้างงานทั้งหมดแล้วนะคะ เลขงานจะเริ่มใหม่จาก 1 เลยค่า~ ✨"
+
     elif text in ['มาเบล', 'Mabel', 'mabel', 'เบล']:
         return f"""สวัสดีค่า {sender_name}! 🌸 มาเบลอยู่ตรงนี้นะคะ
 
